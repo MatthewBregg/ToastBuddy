@@ -1,7 +1,9 @@
-#include <WiFi.h>
+ #include <WiFi.h>
 #include <WiFiClient.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
+#include <Wire.h>
+#include <Adafruit_MLX90614.h>
 #include "/home/bregg/wifi.h"
 // In the above wifi.h file, place 
 //  const char* ssid = "SSID";
@@ -10,17 +12,20 @@
 
 WebServer server(80);
 
+ 
+Adafruit_MLX90614 mlx = Adafruit_MLX90614();
+
 const int led = 2;
 const int magnetPin = 13;
-bool magnetOn = false;
+bool magnetOn = true;
 
 void handleRoot() {
   digitalWrite(led, 1);
-  
   server.send(200, "text/html", GetHtml());
   digitalWrite(led, 0);
 }
 
+int set_bread_temp = 220;
 String GetHtml() {
   String html = R"(
   
@@ -38,6 +43,10 @@ String GetHtml() {
   </style>
   </head>
   <body>
+  <form action="/set_temp" method="GET">
+    Set Bread Temp: <input type="text" name="set_temp">
+    <input type="submit" value="Submit">
+  </form><br>
   )";
   if (magnetOn) {
     html += R"(
@@ -48,10 +57,25 @@ String GetHtml() {
       <p>Magnet Status: OFF</p><a class="button button-on" href="magneton">ON</a>
     )";
   }
+  html += "<h1> Ambient Temp Is: ";
+  html += mlx.readAmbientTempC();
+  html += "</h1>";
+  
+  html += "<h1> Bread Temp Is: ";
+  html +=   mlx.readObjectTempC();
+  html += "</h1>";
+    
+  html += "<h1> Bread Set Temp  Is: ";
+  html +=   set_bread_temp;
+  html += "</h1>";
   html += "</body>";
   return html;
 }
 
+void handleSetTemp() {
+    set_bread_temp = server.arg("set_temp").toInt();
+    handleRoot();
+}
 void handleMagnetOn() {
    magnetOn = true;
    digitalWrite(magnetPin,HIGH);
@@ -82,10 +106,11 @@ void handleNotFound() {
 
 void setup(void) {
   pinMode(magnetPin,OUTPUT);
-  digitalWrite(magnetPin,LOW);
+  digitalWrite(magnetPin,HIGH);
   pinMode(led, OUTPUT);
   digitalWrite(led, 0);
   Serial.begin(115200);
+  mlx.begin();
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   Serial.println("");
@@ -108,9 +133,8 @@ void setup(void) {
   server.on("/", handleRoot);
   server.on("/magneton", handleMagnetOn);
   server.on("/magnetoff", handleMagnetOff);
-  server.on("/inline", []() {
-    server.send(200, "text/plain", "this works as well");
-  });
+  server.on("/set_temp", handleSetTemp);
+
 
   server.onNotFound(handleNotFound);
 
@@ -120,4 +144,10 @@ void setup(void) {
 
 void loop(void) {
   server.handleClient();
+  // If the bread is hotter than our set point, or the sensor is in danger of overheating, stop cooking!
+  if ( mlx.readObjectTempC() > set_bread_temp && mlx.readAmbientTempC() > 70 ) {
+     // Disengage the magnet
+     magnetOn = false;
+     digitalWrite(magnetPin,LOW);
+  }
 }
