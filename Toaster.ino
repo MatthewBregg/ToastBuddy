@@ -72,7 +72,7 @@ String GetHtml() {
           let magnet = json["magnet"];
           let flux = json["flux"];
           let bread_temp = json["bread"];
-          let bread_temp = json["set_bread_temp"];
+          let set_bread_temp = json["set_bread_temp"];
           let ambient_temp = json["ambient"];
           document.getElementById("bread_temp").innerHTML = bread_temp;
           document.getElementById("set_bread_temp").innerHTML = set_bread_temp;
