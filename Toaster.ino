@@ -1,6 +1,8 @@
- #include <WiFi.h>
+#include <ESPAsyncWebServer.h>
+
+
+#include <WiFi.h>
 #include <WiFiClient.h>
-#include <WebServer.h>
 #include <ESPmDNS.h>
 #include <Wire.h>
 #include <Adafruit_MLX90614.h>
@@ -9,8 +11,15 @@
 //  const char* ssid = "SSID";
 //  const char* password = "PASS";
 
+AsyncWebServer server(80);
+AsyncWebSocket ws("/ws"); // access at ws://[esp ip]/ws
+AsyncEventSource events("/events"); // event source (Server-Sent events)
 
-WebServer server(80);
+const char* http_username = "admin";
+const char* http_password = "admin";
+
+//flag to use from web update to reboot the ESP
+bool shouldReboot = false;
 
  
 Adafruit_MLX90614 mlx = Adafruit_MLX90614();
@@ -19,13 +28,9 @@ const int led = 2;
 const int magnetPin = 13;
 bool magnetOn = true;
 
-void handleRoot() {
-  digitalWrite(led, 1);
-  server.send(200, "text/html", GetHtml());
-  digitalWrite(led, 0);
-}
-
 int set_bread_temp = 220;
+int read_ambient_temp = 0;
+int read_bread_temp = 0;
 String GetHtml() {
   String html = R"(
   
@@ -58,11 +63,11 @@ String GetHtml() {
     )";
   }
   html += "<h1> Ambient Temp Is: ";
-  html += mlx.readAmbientTempC();
+  html += read_ambient_temp;
   html += "</h1>";
   
   html += "<h1> Bread Temp Is: ";
-  html +=   mlx.readObjectTempC();
+  html += read_bread_temp;
   html += "</h1>";
     
   html += "<h1> Bread Set Temp  Is: ";
@@ -71,83 +76,65 @@ String GetHtml() {
   html += "</body>";
   return html;
 }
-
-void handleSetTemp() {
-    set_bread_temp = server.arg("set_temp").toInt();
-    handleRoot();
-}
-void handleMagnetOn() {
-   magnetOn = true;
-   digitalWrite(magnetPin,HIGH);
-   handleRoot();
-}
-void handleMagnetOff() {
-   magnetOn = false;
-   digitalWrite(magnetPin,LOW);
-   handleRoot();
+void onRequest(AsyncWebServerRequest *request){
+  //Handle Unknown Request
+  request->send(404);
 }
 
-void handleNotFound() {
-  digitalWrite(led, 1);
-  String message = "File Not Found\n\n";
-  message += "URI: ";
-  message += server.uri();
-  message += "\nMethod: ";
-  message += (server.method() == HTTP_GET) ? "GET" : "POST";
-  message += "\nArguments: ";
-  message += server.args();
-  message += "\n";
-  for (uint8_t i = 0; i < server.args(); i++) {
-    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
-  }
-  server.send(404, "text/plain", message);
-  digitalWrite(led, 0);
-}
-
-void setup(void) {
+void setup(){
+  mlx.begin();
+  Serial.begin(115200);
   pinMode(magnetPin,OUTPUT);
   digitalWrite(magnetPin,HIGH);
-  pinMode(led, OUTPUT);
-  digitalWrite(led, 0);
-  Serial.begin(115200);
-  mlx.begin();
+
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
-  Serial.println("");
-
-  // Wait for connection
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("");
-  Serial.print("Connected to ");
-  Serial.println(ssid);
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-
-  if (MDNS.begin("esp32")) {
-    Serial.println("MDNS responder started");
+  if (WiFi.waitForConnectResult() != WL_CONNECTED) {
+    Serial.printf("WiFi Failed!\n");
+    return;
   }
 
-  server.on("/", handleRoot);
-  server.on("/magneton", handleMagnetOn);
-  server.on("/magnetoff", handleMagnetOff);
-  server.on("/set_temp", handleSetTemp);
+  // attach AsyncEventSource
+  server.addHandler(&events);
 
+   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(200, "text/html", GetHtml());
+  });
+  // respond to GET requests on URL $1....
+  server.on("/magnetoff", HTTP_GET, [](AsyncWebServerRequest *request){
+    magnetOn = false;
+    digitalWrite(magnetPin,LOW);
+    request->send(200, "text/html", GetHtml());
+  });
+  server.on("/magneton", HTTP_GET, [](AsyncWebServerRequest *request){
+    magnetOn = true;
+    digitalWrite(magnetPin,HIGH);
+    request->send(200, "text/html", GetHtml());
+  });
+  server.on("/set_temp", HTTP_GET, [](AsyncWebServerRequest *request){
+    set_bread_temp = request->getParam("set_temp")->value().toInt();
+    request->send(200, "text/html", GetHtml());
+  });
+  
 
-  server.onNotFound(handleNotFound);
-
+  // Catch-All Handlers
+  // Any request that can not find a Handler that canHandle it
+  // ends in the callbacks below.
+  server.onNotFound(onRequest);
   server.begin();
-  Serial.println("HTTP server started");
 }
-
-void loop(void) {
-  server.handleClient();
+long last_read_temp_at = 0;
+void loop(){
   // If the bread is hotter than our set point, or the sensor is in danger of overheating, stop cooking!
-  if ( mlx.readObjectTempC() > set_bread_temp && mlx.readAmbientTempC() > 70 ) {
+  if ( millis() - last_read_temp_at > 1000 ) {
+    read_ambient_temp = mlx.readAmbientTempC();
+    read_bread_temp = mlx.readObjectTempC();
+    last_read_temp_at = millis();
+  }
+  if ( read_bread_temp > set_bread_temp || read_ambient_temp > 70 ) {
      // Disengage the magnet
      magnetOn = false;
      digitalWrite(magnetPin,LOW);
   }
+ 
 }
