@@ -55,7 +55,7 @@ String GetHtml() {
   <body>
   <h1> Ambient Temp: <span id="ambient_temp"></span></h1>
   <h1> Bread Temp: <span id="bread_temp"></span></h1>
-  <h1> Bread Temp: <span id="set_bread_temp"></span></h1>
+  <h1> Target Temp: <span id="set_bread_temp"></span></h1>
   <h1> Flux: <span id="flux"></span></h1>
   <p> Magnet Status:  <p id="magnet_status">UNKNOWN</p></p> <a class="button" onclick="handleMagnet();" id="magnet_button">X</a>
   <script>
