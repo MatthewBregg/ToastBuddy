@@ -1,3 +1,5 @@
+#include <ArduinoJson.h>
+
 #include <ESPAsyncWebServer.h>
 
 
@@ -31,6 +33,7 @@ bool magnetOn = true;
 int set_bread_temp = 220;
 int read_ambient_temp = 0;
 int read_bread_temp = 0;
+int test_flux = 0;
 String GetHtml() {
   String html = R"(
   
@@ -48,10 +51,44 @@ String GetHtml() {
   </style>
   </head>
   <body>
+  <h1> Ambient Temp: <span id="ambient_temp"></span></h1>
+  <h1> Bread Temp: <span id="bread_temp"></span></h1>
+  <h1> Bread Temp: <span id="set_bread_temp"></span></h1>
+  <h1> Flux: <span id="flux"></span></h1>
+  <script>
+    setInterval(function() {
+      // Call a function repetatively with 2 Second interval
+      getData();
+    }, 1000); //2000mSeconds update rate
+    
+    function getData() {
+      var xhttp = new XMLHttpRequest();
+      // Why 4?
+      // https://stackoverflow.com/questions/30522565/what-is-meaning-of-xhr-readystate-4/30522680
+      xhttp.onreadystatechange = function() {
+        if (this.readyState == 4 && this.status == 200) {
+          let json = JSON.parse(this.responseText);
+          console.log(this.responseText);
+          let magnet = json["magnet"];
+          let flux = json["flux"];
+          let bread_temp = json["bread"];
+          let bread_temp = json["set_bread_temp"];
+          let ambient_temp = json["ambient"];
+          document.getElementById("bread_temp").innerHTML = bread_temp;
+          document.getElementById("set_bread_temp").innerHTML = set_bread_temp;
+          document.getElementById("ambient_temp").innerHTML = ambient_temp;
+          document.getElementById("flux").innerHTML = flux;
+        }
+      };
+      xhttp.open("GET", "status_json", true);
+      xhttp.send();
+    }
+  </script>
   <form action="/set_temp" method="GET">
     Set Bread Temp: <input type="text" name="set_temp">
     <input type="submit" value="Submit">
   </form><br>
+  
   )";
   if (magnetOn) {
     html += R"(
@@ -62,23 +99,25 @@ String GetHtml() {
       <p>Magnet Status: OFF</p><a class="button button-on" href="magneton">ON</a>
     )";
   }
-  html += "<h1> Ambient Temp Is: ";
-  html += read_ambient_temp;
-  html += "</h1>";
-  
-  html += "<h1> Bread Temp Is: ";
-  html += read_bread_temp;
-  html += "</h1>";
-    
-  html += "<h1> Bread Set Temp  Is: ";
-  html +=   set_bread_temp;
-  html += "</h1>";
   html += "</body>";
   return html;
 }
 void onRequest(AsyncWebServerRequest *request){
   //Handle Unknown Request
   request->send(404);
+}
+
+String getStatusAsJson() {
+  const int capacity= JSON_OBJECT_SIZE(5);
+  StaticJsonDocument<capacity> doc;
+  doc["magnet"] = magnetOn;
+  doc["bread"] = read_bread_temp;
+  doc["ambient"] = read_ambient_temp;
+  doc["flux"] = test_flux;
+  doc["set_bread_temp"] = set_bread_temp;
+  String output;
+  serializeJson(doc, output);
+  return output;
 }
 
 void setup(){
@@ -96,9 +135,11 @@ void setup(){
 
   // attach AsyncEventSource
   server.addHandler(&events);
-
-   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(200, "text/html", GetHtml());
+  });
+  server.on("/status_json", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(200, "text/plain", getStatusAsJson());
   });
   // respond to GET requests on URL $1....
   server.on("/magnetoff", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -130,6 +171,7 @@ void loop(){
     read_ambient_temp = mlx.readAmbientTempC();
     read_bread_temp = mlx.readObjectTempC();
     last_read_temp_at = millis();
+    ++test_flux;
   }
   if ( read_bread_temp > set_bread_temp || read_ambient_temp > 70 ) {
      // Disengage the magnet
