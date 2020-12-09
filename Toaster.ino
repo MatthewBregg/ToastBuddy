@@ -59,7 +59,45 @@ String GetHtml() {
     setInterval(function() {
       // Call a function repetatively with 2 Second interval
       getData();
-    }, 1000); //2000mSeconds update rate
+    }, 5000); //2000mSeconds update rate
+
+    
+    function handleMagnet() {
+      let magnetButton = document.getElementById("magnet_button");
+      var xhttp = new XMLHttpRequest();
+      // Why 4?
+      // https://stackoverflow.com/questions/30522565/what-is-meaning-of-xhr-readystate-4/30522680
+      xhttp.onreadystatechange = function() {
+        if (this.readyState == 4 && this.status == 200) {
+          let json = JSON.parse(this.responseText);
+          console.log("magnet");  
+          console.log(this.responseText);
+          let magnet = json["magnet"];
+          if (magnet) {
+            magnetButton.classList.remove('button-on');
+            magnetButton.classList.add('button-off');
+            magnetButton.innerHTML = "OFF";
+            document.getElementById("magnet_status").innerHTML = "ON";
+          } else {
+            magnetButton.classList.remove('button-off');
+            magnetButton.classList.add('button-on');
+            magnetButton.innerHTML = "ON";
+            document.getElementById("magnet_status").innerHTML = "OFF";
+          }
+        }
+      };
+      
+      if (magnetButton.classList.contains('button-on')) {
+        console.log("Turning magnet on");
+        xhttp.open("GET", "set_magnet_ajax_on", true);
+      } else {
+        console.log("Turning magnet off");
+        xhttp.open("GET", "set_magnet_ajax_off", true);
+      }
+      xhttp.send();
+    }
+    
+   
     
     function getData() {
       var xhttp = new XMLHttpRequest();
@@ -92,11 +130,11 @@ String GetHtml() {
   )";
   if (magnetOn) {
     html += R"(
-      <p>Magnet Status: ON</p><a class="button button-off" href="magnetoff">OFF</a>
+      <p> Magnet Status:  <p id="magnet_status">ON</p></p> <a class="button button-off" onclick="handleMagnet();" id="magnet_button">OFF</a>
     )";
   } else {
     html += R"(
-      <p>Magnet Status: OFF</p><a class="button button-on" href="magneton">ON</a>
+      <p> Magnet Status: <p id="magnet_status">OFF</p> </p> <a class="button button-on" onclick="handleMagnet();" id="magnet_button">ON</a>
     )";
   }
   html += "</body>";
@@ -142,20 +180,21 @@ void setup(){
     request->send(200, "text/plain", getStatusAsJson());
   });
   // respond to GET requests on URL $1....
-  server.on("/magnetoff", HTTP_GET, [](AsyncWebServerRequest *request){
+  server.on("/set_magnet_ajax_off", HTTP_GET, [](AsyncWebServerRequest *request){
     magnetOn = false;
     digitalWrite(magnetPin,LOW);
-    request->send(200, "text/html", GetHtml());
+    request->send(200, "text/plain", getStatusAsJson());
   });
-  server.on("/magneton", HTTP_GET, [](AsyncWebServerRequest *request){
+  server.on("/set_magnet_ajax_on", HTTP_GET, [](AsyncWebServerRequest *request){
     magnetOn = true;
     digitalWrite(magnetPin,HIGH);
-    request->send(200, "text/html", GetHtml());
+    request->send(200, "text/plain", getStatusAsJson());
   });
   server.on("/set_temp", HTTP_GET, [](AsyncWebServerRequest *request){
     set_bread_temp = request->getParam("set_temp")->value().toInt();
     request->send(200, "text/html", GetHtml());
   });
+
   
 
   // Catch-All Handlers
