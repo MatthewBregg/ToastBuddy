@@ -55,12 +55,27 @@ String GetHtml() {
   <h1> Bread Temp: <span id="bread_temp"></span></h1>
   <h1> Bread Temp: <span id="set_bread_temp"></span></h1>
   <h1> Flux: <span id="flux"></span></h1>
+  <p> Magnet Status:  <p id="magnet_status">UNKNOWN</p></p> <a class="button" onclick="handleMagnet();" id="magnet_button">X</a>
   <script>
     setInterval(function() {
       // Call a function repetatively with 2 Second interval
       getData();
     }, 5000); //2000mSeconds update rate
 
+    function set_magnet(magnet) {
+      let magnetButton = document.getElementById("magnet_button");
+      if (magnet) {
+            magnetButton.classList.remove('button-on');
+            magnetButton.classList.add('button-off');
+            magnetButton.innerHTML = "TURN OFF";
+            document.getElementById("magnet_status").innerHTML = "ON";
+          } else {
+            magnetButton.classList.remove('button-off');
+            magnetButton.classList.add('button-on');
+            magnetButton.innerHTML = "TURN ON";
+            document.getElementById("magnet_status").innerHTML = "OFF";
+          }
+    }
     
     function handleMagnet() {
       let magnetButton = document.getElementById("magnet_button");
@@ -73,17 +88,7 @@ String GetHtml() {
           console.log("magnet");  
           console.log(this.responseText);
           let magnet = json["magnet"];
-          if (magnet) {
-            magnetButton.classList.remove('button-on');
-            magnetButton.classList.add('button-off');
-            magnetButton.innerHTML = "OFF";
-            document.getElementById("magnet_status").innerHTML = "ON";
-          } else {
-            magnetButton.classList.remove('button-off');
-            magnetButton.classList.add('button-on');
-            magnetButton.innerHTML = "ON";
-            document.getElementById("magnet_status").innerHTML = "OFF";
-          }
+          set_magnet(magnet);
         }
       };
       
@@ -116,28 +121,20 @@ String GetHtml() {
           document.getElementById("set_bread_temp").innerHTML = set_bread_temp;
           document.getElementById("ambient_temp").innerHTML = ambient_temp;
           document.getElementById("flux").innerHTML = flux;
+          set_magnet(magnet);
         }
       };
       xhttp.open("GET", "status_json", true);
       xhttp.send();
     }
+    getData();
   </script>
   <form action="/set_temp" method="GET">
     Set Bread Temp: <input type="text" name="set_temp">
     <input type="submit" value="Submit">
   </form><br>
-  
+  </body>
   )";
-  if (magnetOn) {
-    html += R"(
-      <p> Magnet Status:  <p id="magnet_status">ON</p></p> <a class="button button-off" onclick="handleMagnet();" id="magnet_button">OFF</a>
-    )";
-  } else {
-    html += R"(
-      <p> Magnet Status: <p id="magnet_status">OFF</p> </p> <a class="button button-on" onclick="handleMagnet();" id="magnet_button">ON</a>
-    )";
-  }
-  html += "</body>";
   return html;
 }
 void onRequest(AsyncWebServerRequest *request){
@@ -215,7 +212,7 @@ void loop(){
   if ( read_bread_temp > set_bread_temp || read_ambient_temp > 70 ) {
      // Disengage the magnet
      magnetOn = false;
-     digitalWrite(magnetPin,LOW);
+      digitalWrite(magnetPin,LOW);
   }
  
 }
