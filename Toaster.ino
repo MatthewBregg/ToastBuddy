@@ -38,6 +38,8 @@ String GetHtml() {
   String html = R"(
   
   <!DOCTYPE html> <html>
+  <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+  <meta content="utf-8" http-equiv="encoding">
   <head><meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Toastamatic!</title>
   <style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}
@@ -60,7 +62,7 @@ String GetHtml() {
     setInterval(function() {
       // Call a function repetatively with 2 Second interval
       getData();
-    }, 5000); //2000mSeconds update rate
+    }, 1000); 
 
     function set_magnet(magnet) {
       let magnetButton = document.getElementById("magnet_button");
@@ -101,7 +103,30 @@ String GetHtml() {
       }
       xhttp.send();
     }
-    
+
+    function handleTemp() {
+      let setTemp = document.getElementById("set_temp_number");
+      let temp = setTemp.value
+      var xhttp = new XMLHttpRequest();
+      // Why 4?
+      // https://stackoverflow.com/questions/30522565/what-is-meaning-of-xhr-readystate-4/30522680
+      xhttp.onreadystatechange = function() {
+        if (this.readyState == 4 && this.status == 200) {
+          console.log("Ok, changed set temp!");
+          let json = JSON.parse(this.responseText);
+          let set_bread_temp = json["set_bread_temp"];
+          document.getElementById("set_bread_temp").innerHTML = set_bread_temp;
+        }
+      };
+      
+      
+      console.log("Setting temp");
+      console.log(temp);
+      let url = "set_temp?set_temp="+temp;
+      console.log(url);
+      xhttp.open("GET", url, true);
+      xhttp.send();
+    }
    
     
     function getData() {
@@ -129,10 +154,10 @@ String GetHtml() {
     }
     getData();
   </script>
-  <form action="/set_temp" method="GET">
-    Set Bread Temp: <input type="text" name="set_temp">
-    <input type="submit" value="Submit">
-  </form><br>
+  <div>
+    <input type="number" name="set_temp" id="set_temp_number">
+    <a class="button" onclick="handleTemp();" id="set_temp_button">Set Temp</a>
+  </div>
   </body>
   )";
   return html;
@@ -189,7 +214,7 @@ void setup(){
   });
   server.on("/set_temp", HTTP_GET, [](AsyncWebServerRequest *request){
     set_bread_temp = request->getParam("set_temp")->value().toInt();
-    request->send(200, "text/html", GetHtml());
+    request->send(200, "text/plain", getStatusAsJson());
   });
 
   
@@ -212,7 +237,7 @@ void loop(){
   if ( read_bread_temp > set_bread_temp || read_ambient_temp > 70 ) {
      // Disengage the magnet
      magnetOn = false;
-      digitalWrite(magnetPin,LOW);
+     digitalWrite(magnetPin,LOW);
   }
  
 }
