@@ -183,6 +183,27 @@ String getStatusAsJson() {
   return output;
 }
 
+bool tempsTooHigh() {
+  return read_bread_temp > set_bread_temp || read_ambient_temp > 70;
+}
+
+bool cooking = false;
+bool started_cooking = 0;
+void handleLoweredTray(BasicDebounce* ) {
+  if (tempsTooHigh) {
+    // Return and do nothing if the temps are too high
+    return;
+  }
+  digitalWrite(magnetPin,HIGH);
+  magnetOn = true;
+  cooking = true;
+  started_cooking = millis();
+}
+
+void handleRaisedTray(BasicDebounce*) {
+   cooking = false;
+}
+
 void setup(){
   mlx.begin();
   Serial.begin(115200);
@@ -190,6 +211,8 @@ void setup(){
   pinMode(magnetPin,OUTPUT);
   pinMode(switchPin,INPUT_PULLUP);
   digitalWrite(magnetPin,LOW);
+  trayLoweredSwitch.set_pressed_command(&handleLoweredTray);
+  trayLoweredSwitch.set_released_command(&handleRaisedTray);
   magnetOn = false;
 
   WiFi.mode(WIFI_STA);
@@ -234,6 +257,7 @@ void setup(){
   server.onNotFound(onRequest);
   server.begin();
 }
+
 long last_read_temp_at = 0;
 long began_toasting_at = 0;
 void loop(){
@@ -248,7 +272,7 @@ void loop(){
     ++test_flux;
   }
   // If we our at our temp limit, override the switch reading and attempt to disengage the magnet!
-  if ( read_bread_temp > set_bread_temp || read_ambient_temp > 70 ) {
+  if ( tempsTooHigh() ) {
      // Disengage the magnet
      magnetOn = false;
      digitalWrite(magnetPin,LOW);
