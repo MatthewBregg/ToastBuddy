@@ -4,6 +4,8 @@
 
 #include <ESPAsyncWebServer.h>
 
+#include <Update.h>
+
 
 #include <WiFi.h>
 #include <Button_Debounce.h>
@@ -163,7 +165,7 @@ String GetHtml() {
     <input type="number" name="set_temp" id="set_temp_number">
     <a class="button" onclick="handleTemp();" id="set_temp_button">Set Temp</a>
   </div>
-  <div> Version 1.0 </div>
+  <div> Version 1.3 </div>
   </body>
   )";
   return html;
@@ -221,7 +223,7 @@ void setup(){
   WiFi.begin(ssid, password);
   // Set the hostname: https://github.com/espressif/arduino-esp32/issues/3438
   WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE); // required to set hostname properly
-  WiFi.setHostname("toastbuddy");
+  WiFi.setHostname("toast-buddy");
   if (WiFi.waitForConnectResult() != WL_CONNECTED) {
     Serial.printf("WiFi Failed!\n");
     return;
@@ -267,14 +269,48 @@ void setup(){
     request->send(SPIFFS, "/favicon.png", "image/png");
   });
 
+    // Simple Firmware Update Form
+  server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(200, "text/html", "<form method='POST' action='/update' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>");
+  });
+
+  // From the WebServers examples list: https://github.com/me-no-dev/ESPAsyncWebServer. 
+  // Can export compiled binary for this from Sketch menu (Ctrl-Alt-S).. 
+  server.on("/update", HTTP_POST, [](AsyncWebServerRequest *request) {
+      shouldReboot = !Update.hasError();
+      AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", shouldReboot?"OK":"FAIL");
+      response->addHeader("Connection", "close");
+      request->send(response);
+    }, [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
+    if(!index){
+      Serial.printf("Update Start: %s\n", filename.c_str());
+      Serial.printf("Update Start: %s\n", filename.c_str());
+      if(!Update.begin()) {
+        Update.printError(Serial);
+      }
+    }
+    if(!Update.hasError()){
+      if(Update.write(data, len) != len){
+        Update.printError(Serial);
+      }
+    }
+    if(final){
+      if(Update.end(true)){
+        Serial.printf("Update Success: %uB\n", index+len);
+      } else {
+        Update.printError(Serial);
+      }
+    }
+  });
 
   
-
   // Catch-All Handlers
   // Any request that can not find a Handler that canHandle it
   // ends in the callbacks below.
   server.onNotFound(onRequest);
   server.begin();
+
+ 
 }
 
 long last_read_temp_at = 0;
@@ -296,6 +332,15 @@ void loop(){
      magnetOn = false;
      digitalWrite(magnetPin,LOW);
   } 
+
+  if(shouldReboot){
+    // Just in case!
+    magnetOn = false;
+    digitalWrite(magnetPin,LOW);
+    Serial.println("Rebooting...");
+    delay(100);
+    ESP.restart();
+  }
  
  
 }
