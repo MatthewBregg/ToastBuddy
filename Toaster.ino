@@ -161,6 +161,7 @@ String GetHtml() {
     <input type="number" name="set_temp" id="set_temp_number">
     <a class="button" onclick="handleTemp();" id="set_temp_button">Set Temp</a>
   </div>
+  <div> Version 1.0 </div>
   </body>
   )";
   return html;
@@ -190,7 +191,7 @@ bool tempsTooHigh() {
 bool cooking = false;
 bool started_cooking = 0;
 void handleLoweredTray(BasicDebounce* ) {
-  if (tempsTooHigh) {
+  if (tempsTooHigh()) {
     // Return and do nothing if the temps are too high
     return;
   }
@@ -214,16 +215,17 @@ void setup(){
   trayLoweredSwitch.set_pressed_command(&handleLoweredTray);
   trayLoweredSwitch.set_released_command(&handleRaisedTray);
   magnetOn = false;
-
   WiFi.mode(WIFI_STA);
-  // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/protocols/mdns.html
-  mdns_hostname_set("toaster");
-  mdns_instance_name_set("My toaster!");
   WiFi.begin(ssid, password);
+  // Set the hostname: https://github.com/espressif/arduino-esp32/issues/3438
+  WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE); // required to set hostname properly
+  WiFi.setHostname("toaster");
   if (WiFi.waitForConnectResult() != WL_CONNECTED) {
     Serial.printf("WiFi Failed!\n");
     return;
   }
+ 
+
 
   // attach AsyncEventSource
   server.addHandler(&events);
