@@ -4,6 +4,7 @@
 
 
 #include <WiFi.h>
+#include <Button_Debounce.h>
 #include <WiFiClient.h>
 #include <ESPmDNS.h>
 #include <Wire.h>
@@ -28,7 +29,9 @@ Adafruit_MLX90614 mlx = Adafruit_MLX90614();
 
 const int led = 2;
 const int magnetPin = 13;
-bool magnetOn = true;
+const int switchPin = 4;
+BasicDebounce trayLoweredSwitch(4,20);
+bool magnetOn;
 
 int set_bread_temp = 220;
 int read_ambient_temp = 0;
@@ -183,10 +186,16 @@ String getStatusAsJson() {
 void setup(){
   mlx.begin();
   Serial.begin(115200);
+  pinMode(led,OUTPUT);
   pinMode(magnetPin,OUTPUT);
-  digitalWrite(magnetPin,HIGH);
+  pinMode(switchPin,INPUT_PULLUP);
+  digitalWrite(magnetPin,LOW);
+  magnetOn = false;
 
   WiFi.mode(WIFI_STA);
+  // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/protocols/mdns.html
+  mdns_hostname_set("toaster");
+  mdns_instance_name_set("My toaster!");
   WiFi.begin(ssid, password);
   if (WiFi.waitForConnectResult() != WL_CONNECTED) {
     Serial.printf("WiFi Failed!\n");
@@ -226,7 +235,11 @@ void setup(){
   server.begin();
 }
 long last_read_temp_at = 0;
+long began_toasting_at = 0;
 void loop(){
+  trayLoweredSwitch.update();
+  // Debug, have the onboard LED match this switch.
+  digitalWrite(led,trayLoweredSwitch.query());
   // If the bread is hotter than our set point, or the sensor is in danger of overheating, stop cooking!
   if ( millis() - last_read_temp_at > 1000 ) {
     read_ambient_temp = mlx.readAmbientTempC();
@@ -234,10 +247,12 @@ void loop(){
     last_read_temp_at = millis();
     ++test_flux;
   }
+  // If we our at our temp limit, override the switch reading and attempt to disengage the magnet!
   if ( read_bread_temp > set_bread_temp || read_ambient_temp > 70 ) {
      // Disengage the magnet
      magnetOn = false;
      digitalWrite(magnetPin,LOW);
-  }
+  } 
+ 
  
 }
