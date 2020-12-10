@@ -17,13 +17,14 @@
 // In the above wifi.h file, place 
 //  const char* ssid = "SSID";
 //  const char* password = "PASS";
+// Also for the OTA update!
+//  const char* ota_user = "USER";
+//  const char* ota_pass = "PASS";
 
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws"); // access at ws://[esp ip]/ws
 AsyncEventSource events("/events"); // event source (Server-Sent events)
 
-const char* http_username = "admin";
-const char* http_password = "admin";
 
 //flag to use from web update to reboot the ESP
 bool shouldReboot = false;
@@ -165,7 +166,7 @@ String GetHtml() {
     <input type="number" name="set_temp" id="set_temp_number">
     <a class="button" onclick="handleTemp();" id="set_temp_button">Set Temp</a>
   </div>
-  <div> Version 1.3 </div>
+  <div> Version 1.5 </div>
   </body>
   )";
   return html;
@@ -208,7 +209,8 @@ void handleLoweredTray(BasicDebounce* ) {
 void handleRaisedTray(BasicDebounce*) {
    cooking = false;
 }
-
+bool allow_update = false;
+long allowed_update_at = 0;
 void setup(){
   mlx.begin();
   Serial.begin(115200);
@@ -269,19 +271,39 @@ void setup(){
     request->send(SPIFFS, "/favicon.png", "image/png");
   });
 
-    // Simple Firmware Update Form
-  server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(200, "text/html", "<form method='POST' action='/update' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>");
+   // HTTP basic authentication
+  server.on("/login", HTTP_GET, [](AsyncWebServerRequest *request){
+    if(!request->authenticate(ota_user, ota_pass))
+        return request->requestAuthentication();
+    request->send(200, "text/plain", "Login Success!");
+    allow_update = true;
+    allowed_update_at = millis();
   });
-
+  // Simple Firmware Update Form
+  server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request){
+    if (allow_update) {
+      request->send(200, "text/html", "<form method='POST' action='/update' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>");
+    } else {
+      request->send(403, "text/plain", "forbidden");
+    }
+  });
+ 
   // From the WebServers examples list: https://github.com/me-no-dev/ESPAsyncWebServer. 
   // Can export compiled binary for this from Sketch menu (Ctrl-Alt-S).. 
   server.on("/update", HTTP_POST, [](AsyncWebServerRequest *request) {
       shouldReboot = !Update.hasError();
-      AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", shouldReboot?"OK":"FAIL");
+      String response_text = shouldReboot?"OK":"FAIL";
+      if (!allow_update) {
+        response_text = "Forbidden!";
+      }
+      AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", response_text);
       response->addHeader("Connection", "close");
       request->send(response);
     }, [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
+    // If updates are not allowed, return immedietely.
+    if (!allow_update) {
+      return;
+    }
     if(!index){
       Serial.printf("Update Start: %s\n", filename.c_str());
       Serial.printf("Update Start: %s\n", filename.c_str());
@@ -316,6 +338,9 @@ void setup(){
 long last_read_temp_at = 0;
 long began_toasting_at = 0;
 void loop(){
+  if (millis() - allowed_update_at > (60* 1000)) {
+    allow_update = false;
+  }
   trayLoweredSwitch.update();
   // Debug, have the onboard LED match this switch.
   digitalWrite(led,trayLoweredSwitch.query());
