@@ -1,3 +1,5 @@
+#include <SPIFFS.h>
+
 #include <ArduinoJson.h>
 
 #include <ESPAsyncWebServer.h>
@@ -44,7 +46,7 @@ String GetHtml() {
   <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
   <meta content="utf-8" http-equiv="encoding">
   <head><meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Toastamatic!</title>
+  <title>!!!The ToastBuddy Toastamatic Toaster!!!</title>
   <style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}
   body{margin-top: 50px;} h1 {color: #444444;margin: 50px auto 30px;} h3 {color: #444444;margin-bottom: 50px;}
   .button {display: block;width: 80px;background-color: #3498db;border: none;color: white;padding: 13px 30px;text-decoration: none;font-size: 25px;margin: 0px auto 35px;cursor: pointer;border-radius: 4px;}
@@ -219,13 +221,20 @@ void setup(){
   WiFi.begin(ssid, password);
   // Set the hostname: https://github.com/espressif/arduino-esp32/issues/3438
   WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE); // required to set hostname properly
-  WiFi.setHostname("toaster");
+  WiFi.setHostname("toastbuddy");
   if (WiFi.waitForConnectResult() != WL_CONNECTED) {
     Serial.printf("WiFi Failed!\n");
     return;
   }
- 
 
+  // We must initialize spiffs in order to read the favicon/any other files.
+  // IF WE DON'T INIT SPIFFS any send(SPIFFS,...) will fail mysteriously!
+  if(!SPIFFS.begin(true)){
+    Serial.println("An Error has occurred while mounting SPIFFS");
+    return;
+  }
+  
+ 
 
   // attach AsyncEventSource
   server.addHandler(&events);
@@ -250,6 +259,14 @@ void setup(){
     set_bread_temp = request->getParam("set_temp")->value().toInt();
     request->send(200, "text/plain", getStatusAsJson());
   });
+
+  // Place a 16x16 png in the data folder named favicon.png in order for a favicon to be loader.
+  // Then follow the directions on https://randomnerdtutorials.com/install-esp32-filesystem-uploader-arduino-ide/ to flash the flash memory.
+  // Favicon!
+  server.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, "/favicon.png", "image/png");
+  });
+
 
   
 
